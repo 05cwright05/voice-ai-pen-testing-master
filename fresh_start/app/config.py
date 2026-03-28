@@ -37,6 +37,7 @@ class Settings:
     openai_model: str
     elevenlabs_api_key: str
     deepgram_api_key: str
+    mongo_uri: str
 
     @property
     def livekit_sip_host(self) -> str:
@@ -56,4 +57,5 @@ def get_settings() -> Settings:
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip(),
         elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
         deepgram_api_key=_required("DEEPGRAM_API_KEY"),
+        mongo_uri=_required("MONGO_URI"),
     )

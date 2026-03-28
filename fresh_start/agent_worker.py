@@ -6,7 +6,9 @@ from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
 from livekit.plugins import deepgram, elevenlabs, openai, silero
 
 from app.config import get_settings
+from app.db import init_mongo_client
 from app.prompts import SYSTEM_PROMPT
+from app.tools import get_appointments, get_available_slots, schedule_appointment, verify_patient
 
 settings = get_settings()
 
@@ -18,6 +20,7 @@ os.environ.setdefault("ELEVENLABS_API_KEY", settings.elevenlabs_api_key)
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
+    init_mongo_client()
 
     session = AgentSession(
         stt=deepgram.STT(
@@ -53,7 +56,15 @@ async def entrypoint(ctx: JobContext) -> None:
 
     await session.start(
         room=ctx.room,
-        agent=Agent(instructions=os.getenv("SYSTEM_PROMPT", SYSTEM_PROMPT).strip()),
+        agent=Agent(
+            instructions=os.getenv("SYSTEM_PROMPT", SYSTEM_PROMPT).strip(),
+            tools=[
+                verify_patient,
+                get_appointments,
+                get_available_slots,
+                schedule_appointment,
+            ],
+        ),
     )
 
 
