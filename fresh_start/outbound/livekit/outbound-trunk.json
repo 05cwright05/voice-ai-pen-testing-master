@@ -1,0 +1,9 @@
+{
+  "trunk": {
+    "name": "outbound-attacker-trunk",
+    "address": "hackindy-98ebce.pstn.twilio.com",
+    "numbers": ["+14788005687"],
+    "authUsername": "lk_f2e9e314",
+    "authPassword": "SHJdJXJijQhEI6j4Lba0"
+  }
+}

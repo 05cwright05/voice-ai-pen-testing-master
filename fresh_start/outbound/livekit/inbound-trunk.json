@@ -1,0 +1,10 @@
+{
+  "trunk": {
+    "name": "voice-mvp-inbound-trunk",
+    "numbers": [
+      "+18125058284"
+    ],
+    "authUsername": "hackIndyTrunk",
+    "authPassword": "SuperSecretPassword123"
+  }
+}
