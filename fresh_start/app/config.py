@@ -37,7 +37,6 @@ class Settings:
     openai_model: str
     elevenlabs_api_key: str
     deepgram_api_key: str
-    system_prompt: str
 
     @property
     def livekit_sip_host(self) -> str:
@@ -48,20 +47,13 @@ def get_settings() -> Settings:
     return Settings(
         twilio_auth_token=_required("TWILIO_AUTH_TOKEN"),
         livekit_sip_uri=_required("LIVEKIT_SIP_URI"),
-        target_phone_number=_required("TWILIO_PHONE_NUMBER2"),
+        target_phone_number=_required("TWILIO_PHONE_NUMBER1"),
         inbound_trunk_username=_required("LIVEKIT_INBOUND_TRUNK_USERNAME"),
         inbound_trunk_password=_required("LIVEKIT_INBOUND_TRUNK_PASSWORD"),
         public_webhook_base_url=_required("PUBLIC_WEBHOOK_BASE_URL").rstrip("/"),
         validate_twilio_signature=_as_bool("ENABLE_TWILIO_SIGNATURE_VALIDATION", True),
         openai_api_key=_required("OPENAI_API_KEY"),
-        openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip(),
+        openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip(),
         elevenlabs_api_key=_required("ELEVENLABS_API_KEY"),
         deepgram_api_key=_required("DEEPGRAM_API_KEY"),
-        system_prompt=os.getenv(
-            "SYSTEM_PROMPT",
-            (
-                "You are a concise, helpful phone assistant. Confirm details, "
-                "ask one question at a time, and keep responses short."
-            ),
-        ).strip(),
     )

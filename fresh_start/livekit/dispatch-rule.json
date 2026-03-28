@@ -1,0 +1,18 @@
+{
+  "dispatch_rule": {
+    "name": "voice-mvp-individual-dispatch",
+    "trunkIds": ["ST_V9oxESWuXPvj"],
+    "rule": {
+      "dispatchRuleIndividual": {
+        "roomPrefix": "call-"
+      }
+    },
+    "roomConfig": {
+      "agents": [
+        {
+          "agentName": "voice-mvp-target"
+        }
+      ]
+    }
+  }
+}
