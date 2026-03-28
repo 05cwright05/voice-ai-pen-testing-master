@@ -40,6 +40,9 @@ Required:
 - `OPENAI_API_KEY`
 - `ELEVENLABS_API_KEY`
 - `DEEPGRAM_API_KEY`
+- `MONGODB_URI`
+- `MONGODB_DB`
+- `MONGODB_COLLECTION`
 
 Optional:
 
@@ -73,6 +76,12 @@ lk sip outbound create outbound-trunk.json
 
 ## Run
 
+Initialize MongoDB storage for evaluation documents:
+
+```bash
+python scripts/setup_mongo.py
+```
+
 Terminal 1:
 
 ```bash
@@ -95,4 +104,36 @@ curl -X POST http://localhost:9000/call
 
 - `GET /healthz`
 - `POST /call`
+
+## Call-end scoring persistence
+
+`app/call_end_handler.py` now uses `gpt-4.1-mini` to score transcripts and insert
+evaluation documents into MongoDB. The stored shape is:
+
+```json
+{
+  "_id": "ObjectId",
+  "timestamp": "ISODate",
+  "scores": {
+    "identity": { "value": 0, "description": "" },
+    "prompt_injection": { "value": 0, "description": "" },
+    "jailbreak": { "value": 0, "description": "" },
+    "voice_specific": { "value": 0, "description": "" },
+    "info_extraction": { "value": 0, "description": "" },
+    "social_engineering": { "value": 0, "description": "" },
+    "logic_state": { "value": 0, "description": "" },
+    "telephony": { "value": 0, "description": "" }
+  },
+  "notes": "optional",
+  "metadata": {
+    "call_id": "optional",
+    "prompt_text": "optional",
+    "response_text": "optional",
+    "additional_tags": ["optional"]
+  },
+  "scorer_id": "optional ObjectId"
+}
+```
+
+Per current requirements, `target_ai_id` and `test_run_id` are intentionally omitted.
 
