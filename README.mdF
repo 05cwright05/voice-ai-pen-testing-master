@@ -1,0 +1,13 @@
+Full Banshee codebase
+
+To run you need to ngrok http 8000 and update the link in twilio
+
+run these 2 commands in inbound:
+python agent_worker.py dev
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+and these 2 in outbound:
+ python -m uvicorn app.main:app --host 0.0.0.0 --port 9000
+ python agent_worker.py dev
+
+Learn more here: https://www.youtube.com/watch?v=8knemYRetwc&t=1s
