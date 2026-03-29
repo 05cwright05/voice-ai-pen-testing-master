@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -9,6 +10,11 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from openai import OpenAI
 from pymongo import MongoClient
+
+logger = logging.getLogger("voice-mvp.outbound.call_end_handler")
+
+DEFAULT_DB_NAME = "voice_security_lab"
+DEFAULT_COLLECTION_NAME = "outbound_evaluations"
 
 SCORE_CATEGORIES = (
     "identity",
@@ -77,30 +83,53 @@ def _normalize_scores(raw_scores: Any) -> dict[str, dict[str, Any]]:
 
 
 def _score_transcript(transcript: str) -> dict[str, Any]:
-    client = OpenAI(api_key=_required_env("OPENAI_API_KEY"))
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        temperature=0,
-        input=[
-            {"role": "system", "content": [{"type": "text", "text": SCORING_SYSTEM_PROMPT}]},
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": f"Evaluate this transcript:\n\n{transcript}"}],
-            },
-        ],
-    )
+    logger.info("[SCORING] Starting transcript scoring via OpenAI (model=gpt-4.1-mini)")
+    logger.debug("[SCORING] Transcript length: %d chars, %d lines", len(transcript), transcript.count("\n") + 1)
+
+    try:
+        api_key = _required_env("OPENAI_API_KEY")
+        logger.debug("[SCORING] OPENAI_API_KEY is set (length=%d)", len(api_key))
+    except ValueError:
+        logger.error("[SCORING] OPENAI_API_KEY is missing — cannot score transcript")
+        raise
+
+    client = OpenAI(api_key=api_key)
+
+    try:
+        response = client.responses.create(
+            model="gpt-4.1-mini",
+            temperature=0,
+            input=[
+                {"role": "system", "content": [{"type": "input_text", "text": SCORING_SYSTEM_PROMPT}]},
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": f"Evaluate this transcript:\n\n{transcript}"}],
+                },
+            ],
+        )
+        logger.info("[SCORING] OpenAI response received successfully")
+    except Exception:
+        logger.exception("[SCORING] OpenAI API call failed")
+        raise
 
     output_text = (response.output_text or "").strip()
     if not output_text:
+        logger.error("[SCORING] Scoring model returned empty output_text")
         raise ValueError("Scoring model returned empty output.")
+
+    logger.debug("[SCORING] Raw model output (%d chars): %.500s", len(output_text), output_text)
 
     try:
         payload = json.loads(output_text)
     except json.JSONDecodeError as exc:
+        logger.error("[SCORING] Model output is not valid JSON: %.500s", output_text)
         raise ValueError("Scoring model returned non-JSON output.") from exc
 
     if not isinstance(payload, dict):
+        logger.error("[SCORING] Model output is JSON but not a dict: %s", type(payload).__name__)
         raise ValueError("Scoring model response must be a JSON object.")
+
+    logger.info("[SCORING] Transcript scored successfully — keys: %s", list(payload.keys()))
     return payload
 
 
@@ -129,16 +158,35 @@ def on_outbound_call_end(
     notes: str | None = None,
 ) -> dict[str, Any]:
     """Score an outbound transcript and persist the evaluation in MongoDB."""
+    logger.info("=" * 60)
+    logger.info("[CALL_END] on_outbound_call_end() invoked")
+    logger.info("[CALL_END] call_id=%s  notes=%s  tags=%s", call_id, notes, additional_tags)
+    logger.debug("[CALL_END] Transcript preview (first 300 chars): %.300s", transcript)
+
     if not transcript.strip():
+        logger.error("[CALL_END] Transcript is empty — aborting")
         raise ValueError("transcript must not be empty")
 
-    mongo_uri = _required_env("MONGODB_URI")
-    mongo_db = _required_env("MONGODB_DB")
-    mongo_collection = _required_env("MONGODB_COLLECTION")
+    logger.info("[CALL_END] Transcript length: %d chars", len(transcript.strip()))
 
+    # --- Resolve MongoDB connection details ---
+    try:
+        mongo_uri = _required_env("MONGO_URI")
+        logger.info("[CALL_END] MONGO_URI is set (length=%d)", len(mongo_uri))
+    except ValueError:
+        logger.error("[CALL_END] MONGO_URI env var is MISSING — cannot persist evaluation")
+        raise
+
+    mongo_db = os.getenv("MONGODB_DB", "").strip() or DEFAULT_DB_NAME
+    mongo_collection = os.getenv("MONGODB_COLLECTION", "").strip() or DEFAULT_COLLECTION_NAME
+    logger.info("[CALL_END] Target: MongoDB db=%r collection=%r", mongo_db, mongo_collection)
+
+    # --- Score the transcript ---
     model_payload = _score_transcript(transcript)
     normalized_scores = _normalize_scores(model_payload.get("scores"))
+    logger.info("[CALL_END] Normalized scores: %s", {k: v.get("value") for k, v in normalized_scores.items()})
 
+    # --- Build the document ---
     metadata: dict[str, Any] = {}
     if call_id:
         metadata["call_id"] = call_id
@@ -166,11 +214,28 @@ def on_outbound_call_end(
     if stored_scorer_id is not None:
         document["scorer_id"] = stored_scorer_id
 
-    mongo_client = MongoClient(mongo_uri)
+    logger.debug("[CALL_END] Document to insert: %s", {k: str(v)[:200] for k, v in document.items()})
+
+    # --- Insert into MongoDB ---
+    logger.info("[CALL_END] Connecting to MongoDB...")
+    mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=10_000)
     try:
         collection = mongo_client[mongo_db][mongo_collection]
-        collection.insert_one(document)
+        logger.info("[CALL_END] Inserting document into %s.%s ...", mongo_db, mongo_collection)
+        insert_result = collection.insert_one(document)
+        logger.info(
+            "[CALL_END] SUCCESS — inserted_id=%s  acknowledged=%s",
+            insert_result.inserted_id,
+            insert_result.acknowledged,
+        )
+    except Exception:
+        logger.exception("[CALL_END] MongoDB insert FAILED")
+        raise
     finally:
         mongo_client.close()
+        logger.debug("[CALL_END] MongoDB connection closed")
 
-    return {"inserted_id": str(document["_id"]), "timestamp": document["timestamp"].isoformat()}
+    result = {"inserted_id": str(document["_id"]), "timestamp": document["timestamp"].isoformat()}
+    logger.info("[CALL_END] Returning result: %s", result)
+    logger.info("=" * 60)
+    return result
